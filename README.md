@@ -45,6 +45,19 @@ lake build
 You should now be able to elaborate the file and enable optional `#eval` examples by uncommenting them.
 
 
+RSBridge module (dimensionless bridge)
+--------------------------------------
+- File: `mono-lean/RSBridge.lean` (requires mathlib4)
+- Provides:
+  - `ZOf`, `phi`, `gap` (𝓕), abstract `residueAtAnchor`
+  - Theorems: `equalZ_residue`, `anchor_ratio`
+  - Certificate shape: `ResidueCert` with `.valid` for interval evidence
+
+Certificate workflow (proof → measurement seam)
+-----------------------------------------------
+- Emit an auto-generated `RSAnchorCerts.lean` with a list `certs : List ResidueCert` and a proof that each `c.valid` holds using rational bounds from your evaluator.
+- This discharges the anchor postulate numerically without FP trust.
+
 Notes
 -----
 - Units: w, ξ, n, ζ, α, C_lag are dimensionless; a0 has SI acceleration units; τ0 is seconds.

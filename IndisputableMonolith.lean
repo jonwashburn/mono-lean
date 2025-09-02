@@ -2189,6 +2189,12 @@ lemma a0_SI_pos : 0 < a0_SI := by
   -- numeric literal 1.2e-10 is positive
   norm_num [a0_SI]
 
+/-- Theorem-backed restatement: α equals (1 − 1/φ)/2. -/
+@[simp] lemma alpha_locked_thm : alpha_locked = (1 - 1 / phi) / 2 := rfl
+
+/-- Theorem-backed restatement: C_lag equals φ^(−5) written as 1/φ^5. -/
+@[simp] lemma Clag_thm : Clag = 1 / (phi ^ (5 : Nat)) := rfl
+
 /-- Bridge alias: α from the ledger constants layer (no new axioms). -/
 @[simp] lemma alpha_locked_from_phi : alpha_locked = (1 - 1 / phi) / 2 := rfl
 
@@ -2219,6 +2225,7 @@ def upsilonStar : ℝ := 1.0
 /-- Internal guards to keep square-roots well-defined. -/
 def εr : ℝ := 1e-12
 def εv : ℝ := 1e-12
+def εt : ℝ := 1e-12
 
 /-- Squared baryonic speed. -/
 def vbarSq (C : BaryonCurves) (r : ℝ) : ℝ :=
@@ -2310,6 +2317,12 @@ def w_core_accel (g gext : ℝ) : ℝ :=
   let c  := 1 + gext / a0
   1 + Constants.Clag * (Real.rpow x (-α) - Real.rpow c (-α))
 
+/-- Time-kernel core weight, centered at t=1 (dimensionless t := T_dyn/τ0). -/
+def w_core_time (t : ℝ) : ℝ :=
+  let α := Constants.alpha_locked
+  let tc := max εt t
+  1 + Constants.Clag * (Real.rpow tc α - 1)
+
 /-
 Small‑lag spec (comment):
 Around the reference point g≈a0 (and small gext), a first‑order expansion of
@@ -2327,6 +2340,16 @@ def w_core_accel_inf1 (g gext : ℝ) : ℝ :=
   let α  := Constants.alpha_locked
   let x  := max (a0 / 1e9) ((g + gext) / a0)
   1 + Constants.Clag * Real.rpow x (-α)
+
+/-- Kernel mode selector for ILG weights. -/
+inductive KernelMode | accel | time | accelInf1
+
+/-- Unified core weight selector by mode. -/
+def w_core (mode : KernelMode) (g gext t : ℝ) : ℝ :=
+  match mode with
+  | KernelMode.accel => w_core_accel g gext
+  | KernelMode.time => w_core_time t
+  | KernelMode.accelInf1 => w_core_accel_inf1 g gext
 
 /-- High‑acceleration bounds for the inf‑normalized kernel:
     if (g+gext)/a0 ≥ 1 then 1 ≤ w ≤ 1 + Clag. -/
@@ -2363,13 +2386,32 @@ lemma w_core_accel_inf1_bounds_high (g gext : ℝ)
     simpa [mul_one, add_comm, add_left_comm, add_assoc] using add_le_add_left this 1
   exact And.intro hlow hupper
 
+/-- Time-kernel equals 1 at the reference `t=1`. -/
+lemma w_core_time_at_ref : w_core_time 1 = 1 := by
+  dsimp [w_core_time]
+  have hpow : Real.rpow (1 : ℝ) Constants.alpha_locked = 1 := by simpa using Real.rpow_one Constants.alpha_locked
+  have : max εt (1 : ℝ) = 1 := by
+    have : εt ≤ (1 : ℝ) := by norm_num
+    exact max_eq_right this
+  simp [this, hpow]
+
 /-- Total ILG weight (global-only factors ξ, n, ζ included). -/
 def w_tot (C : BaryonCurves) (xi : ℝ) (gext : ℝ) (A r0 p : ℝ) (r : ℝ) : ℝ :=
   xi * n_of_r A r0 p r * zeta_of_r r * w_core_accel (gbar C r) gext
 
+/-- Total ILG weight with a kernel mode and optional time input. -/
+def w_tot_mode (C : BaryonCurves) (xi : ℝ) (gext : ℝ)
+  (A r0 p : ℝ) (mode : KernelMode) (r t : ℝ) : ℝ :=
+  xi * n_of_r A r0 p r * zeta_of_r r * w_core mode (gbar C r) gext t
+
 /-- Locked rotation law: v_rot(r) = sqrt(w_tot(r)) * v_bar(r). -/
 def vrot (C : BaryonCurves) (xi : ℝ) (gext : ℝ) (A r0 p : ℝ) (r : ℝ) : ℝ :=
   Real.sqrt (max εv (w_tot C xi gext A r0 p r)) * vbar C r
+
+/-- Rotation law using a selected kernel mode and time argument for the time-kernel. -/
+def vrot_mode (C : BaryonCurves) (xi : ℝ) (gext : ℝ)
+  (A r0 p : ℝ) (mode : KernelMode) (r t : ℝ) : ℝ :=
+  Real.sqrt (max εv (w_tot_mode C xi gext A r0 p mode r t)) * vbar C r
 
 /-! ### Hardened lemmas (limits, bounds, domain-friendly facts) -/
 
@@ -2532,6 +2574,12 @@ lemma vrot_at_ref (C : BaryonCurves) (xi A r0 p r : ℝ) :
     Real.sqrt (max εv (xi * n_of_r A r0 p r * zeta_of_r r)) * vbar C r := by
   simp [vrot, w_tot, w_core_accel_at_ref]
 
+/-- Time-kernel variant at reference `t=1`: matches √(ξ n ζ)·vbar (with guard). -/
+lemma vrot_mode_time_at_ref (C : BaryonCurves) (xi A r0 p r : ℝ) :
+  vrot_mode C xi 0 A r0 p KernelMode.time r 1
+    = Real.sqrt (max εv (xi * n_of_r A r0 p r * zeta_of_r r)) * vbar C r := by
+  simp [vrot_mode, w_tot_mode, w_core_time_at_ref]
+
 /-- Lower bound without eps elimination: for any r,
     vrot ≥ sqrt(w_tot) * vbar (since sqrt(max εv W) ≥ sqrt W). -/
 lemma vrot_lower_bound (C : BaryonCurves) (xi gext A r0 p r : ℝ) :
@@ -2541,6 +2589,52 @@ lemma vrot_lower_bound (C : BaryonCurves) (xi gext A r0 p r : ℝ) :
     exact le_max_right _ _
   have hsqrt := Real.sqrt_le_sqrt hmax
   exact mul_le_mul_of_nonneg_right hsqrt (vbar_nonneg C r)
+
+/-- External-field effect (EFE) coarse sensitivity bound via decomposition.
+    For any gext ≥ 0,
+    |w(g,gext) − w(g,0)| ≤ Clag·[ x(0)^(−α) − x(gext)^(−α) + 1 − c(gext)^(−α) ],
+    where x(·):=((g+·)/a0)∨(a0/1e9) and c(gext):=1+gext/a0. -/
+lemma w_core_accel_small_gext_decomp_bound (g gext : ℝ) (hge : 0 ≤ gext) :
+  let a0 := Constants.a0_SI; let α := Constants.alpha_locked
+  let x0 := max (a0/1e9) (g / a0)
+  let xg := max (a0/1e9) ((g + gext) / a0)
+  let cg := 1 + gext / a0
+  |w_core_accel g gext - w_core_accel g 0|
+    ≤ Constants.Clag * (|Real.rpow xg (-α) - Real.rpow x0 (-α)| + |Real.rpow cg (-α) - 1|) := by
+  -- Expand and apply triangle inequality with nonnegativity of Clag.
+  dsimp [w_core_accel]
+  set a0 := Constants.a0_SI with ha0; set α := Constants.alpha_locked with halpha
+  set xg' := max (a0/1e9) ((g + gext) / a0) with hxg
+  set x0' := max (a0/1e9) ((g + 0) / a0) with hx0
+  set cg' := 1 + gext / a0 with hcg
+  have hClag : 0 ≤ Constants.Clag := (le_of_lt Constants.Clag_pos)
+  have hk : |Constants.Clag| = Constants.Clag := abs_of_nonneg hClag
+  -- Difference
+  have :
+    w_core_accel g gext - w_core_accel g 0
+      = Constants.Clag * ((Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)) := by
+    simp [w_core_accel, hxg, hx0, hcg, sub_eq_add_neg]
+  -- Bound |Clag * (...)| by Clag * |...|
+  have :
+    |w_core_accel g gext - w_core_accel g 0|
+      = Constants.Clag * |(Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)| := by
+    simpa [this, hk, abs_mul]
+  -- Triangle: |(a-b) - (c-1)| ≤ |a-c| + |(1) - b|
+  have htri :
+    |(Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)|
+      ≤ |Real.rpow xg' (-α) - Real.rpow x0' (-α)| + |1 - Real.rpow cg' (-α)| := by
+    -- rewrite as (a-c) + (1-b)
+    have : (Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)
+        = (Real.rpow xg' (-α) - Real.rpow x0' (-α)) + (1 - Real.rpow cg' (-α)) := by ring
+    simpa [this] using abs_add (Real.rpow xg' (-α) - Real.rpow x0' (-α)) (1 - Real.rpow cg' (-α))
+  -- Combine
+  have :
+    |w_core_accel g gext - w_core_accel g 0|
+      ≤ Constants.Clag * (|Real.rpow xg' (-α) - Real.rpow x0' (-α)| + |1 - Real.rpow cg' (-α)|) := by
+    have := mul_le_mul_of_nonneg_left htri hClag
+    simpa [this, hk]
+  -- Clean up absolute |1 - rpow| to |rpow - 1|
+  simpa [hxg, hx0, hcg, abs_sub_comm (Real.rpow cg' (-α)) 1] using this
 
 end ILG
 end Gravity
