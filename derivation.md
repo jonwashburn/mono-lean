@@ -47,6 +47,13 @@ Lean mapping (current single‑file implementation)
   - `Clag := 1 / (phi ^ 5)`
   - `a0_SI := 1.2e-10`
 
+Mass recognition layer (discrete → φ‑exponent ratios)
+----------------------------------------------------
+- Discrete layer: `Species`, `Sector`, `tildeQ`, `Z`, and frozen rung integers `r` live in `IndisputableMonolith.Recognition`.
+- Gap/exponent: `Fgap(Z)=log(1+Z/φ)/log φ`, `massExp(i)=r_i + Fgap(Z_i) − 8`, `PhiPow x=exp(log φ·x)`, `mass M0 i = M0 * PhiPow (massExp i)`.
+- Anchor identity (single seam to measurement): `anchorIdentity f : ∀i, f i = Fgap (Z i)`.
+- Consequences (proved): equal‑Z degeneracy; exact anchor ratios `mass M0 i / mass M0 j = PhiPow (r_i − r_j)`. For natural Δr, this equals `φ^Δr`.
+- Family examples encoded: `μ/e = φ^11`, `τ/μ = φ^6`, `c/u = φ^11`, `t/c = φ^6`, `s/d = φ^11`, `b/s = φ^6`.
 
 Spec and properties to harden
 -----------------------------
