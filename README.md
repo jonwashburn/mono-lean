@@ -8,6 +8,12 @@ This repository contains a single‑file Lean development (`IndisputableMonolith
 - spec lemmas and bounds (α, C_lag, a0 positivity; ξ, n, ζ bounds),
 - optional variant kernel with strict Newtonian limit at ∞.
 
+What’s new in this build
+------------------------
+- Constants bridge: α and C_lag are theorem-backed in one place (`IndisputableMonolith.Constants`); ILG references those directly.
+- Kernel toggle: both acceleration and time kernels are available, plus an inf‑normalized variant (`accelInf1`).
+- EFE continuity: `w_core_accel` is jointly continuous in `(g,gext)` with coarse sensitivity bounds and uniform envelope for `vrot`.
+
 
 Build (Lean 4 + mathlib4)
 -------------------------
@@ -63,5 +69,10 @@ Notes
 - Units: w, ξ, n, ζ, α, C_lag are dimensionless; a0 has SI acceleration units; τ0 is seconds.
 - The acceleration kernel is centered at `g=a0`. If you prefer `lim_{g→∞} w = 1`, use the provided `w_core_accel_inf1` or the time‑kernel variant referenced in the paper.
 - The development avoids heavy numeric code; proofs emphasize invariants, bounds, and exact equalities used by the paper.
+
+Pointers
+--------
+- PCE DSL and canonical specs live in `IndisputableMonolith.PCE`.
+- LNAL typed core and SI time bridge live in `IndisputableMonolith.LNAL`.
 
 

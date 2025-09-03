@@ -50,6 +50,7 @@ Lean mapping (current single‑file implementation)
 - Kernel mode additions in `IndisputableMonolith.Gravity.ILG`
   - `w_core_time (t)` centered at `t=1` (time-kernel), with `w_core_time_at_ref` and reference equality to accel-kernel
   - `KernelMode` selector with `accel | time | accelInf1`, plus `w_core`, `w_tot_mode`, `vrot_mode`
+  - EFE continuity and sensitivity: `w_core_accel_continuous`, coarse bounds `w_core_accel_small_gext_decomp_bound`, and uniform envelope `vrot_envelope_bounds_of_xi`.
 
 Mass recognition layer (discrete → φ‑exponent ratios)
 ----------------------------------------------------
@@ -86,10 +87,12 @@ Spec and properties to harden
 
 6) External‑field effect
 - Document and bound the offset: behavior at `g=0` with `gext ≥ 0`; continuity in `gext`.
+  - Implemented continuity (`w_core_accel_continuous`) and a uniform bound for `w` and `vrot` under `gext≥0`.
 
 7) Sensitivity and robustness
 - Continuity of `w_core_accel` in `α` and `gext` (domain guarded via `rpow`).
 - Simple bounds: for `r ≥ r0`, `n(r) ∈ [1, 1+A]`; `ξ(u) ∈ [1, 1+Clag]`.
+ - Envelope: with `ξ∈[1,1+Clag]`, `ζ∈[0.8,1.2]`, `gext≥0`, get two‑sided bounds on `vrot`.
 
 8) Build environment and examples
 - Lake/mathlib setup note to resolve `Mathlib` imports.
