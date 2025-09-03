@@ -1741,6 +1741,109 @@ end IndisputableMonolith
 
 namespace IndisputableMonolith
 namespace Recognition
+namespace Certification
+
+noncomputable section
+open Classical
+
+/-- Closed interval with endpoints `lo ≤ hi`. -/
+structure Interval where
+  lo : ℝ
+  hi : ℝ
+  lo_le_hi : lo ≤ hi
+
+@[simp] def memI (I : Interval) (x : ℝ) : Prop := I.lo ≤ x ∧ x ≤ I.hi
+
+@[simp] def width (I : Interval) : ℝ := I.hi - I.lo
+
+/-- If `x,y` lie in the same interval `I`, then `|x − y| ≤ width(I)`. -/
+lemma abs_sub_le_width_of_memI {I : Interval} {x y : ℝ}
+  (hx : memI I x) (hy : memI I y) : |x - y| ≤ width I := by
+  have hxhi : x ≤ I.hi := hx.2
+  have hylo : I.lo ≤ y := hy.1
+  have h1 : x - y ≤ I.hi - I.lo := by
+    have hneg : -y ≤ -I.lo := neg_le_neg hylo
+    have hleft : x - y ≤ x - I.lo := by
+      simpa [sub_eq_add_neg, add_comm, add_left_comm, add_assoc] using add_le_add_left hneg x
+    have hright : x - I.lo ≤ I.hi - I.lo := by
+      simpa [sub_eq_add_neg, add_comm, add_left_comm, add_assoc] using sub_le_sub_right hxhi I.lo
+    exact le_trans hleft hright
+  have h2 : y - x ≤ I.hi - I.lo := by
+    have hxlo : I.lo ≤ x := hx.1
+    have hyhi : y ≤ I.hi := hy.2
+    have hneg : -x ≤ -I.lo := neg_le_neg hxlo
+    have hleft : y - x ≤ y - I.lo := by
+      simpa [sub_eq_add_neg, add_comm, add_left_comm, add_assoc] using add_le_add_left hneg y
+    have hright : y - I.lo ≤ I.hi - I.lo := by
+      simpa [sub_eq_add_neg, add_comm, add_left_comm, add_assoc] using sub_le_sub_right hyhi I.lo
+    exact le_trans hleft hright
+  have hboth : -(I.hi - I.lo) ≤ x - y ∧ x - y ≤ I.hi - I.lo := by
+    constructor
+    · simpa [neg_sub] using h2
+    · exact h1
+  simpa [width, sub_eq_add_neg] using (abs_le.mpr hboth)
+
+/-- Anchor certificate: species residue intervals and charge‑wise gap intervals. -/
+structure AnchorCert where
+  M0 : Interval
+  Ires : Species → Interval
+  center : Int → ℝ
+  eps : Int → ℝ
+  eps_nonneg : ∀ z, 0 ≤ eps z
+
+@[simp] def Igap (C : AnchorCert) (z : Int) : Interval :=
+{ lo := C.center z - C.eps z
+, hi := C.center z + C.eps z
+, lo_le_hi := by have := C.eps_nonneg z; linarith }
+
+/-- Validity of a certificate w.r.t. the formal layer. -/
+structure Valid (C : AnchorCert) : Prop where
+  M0_pos : 0 < C.M0.lo
+  Fgap_in : ∀ i : Species, memI (C.Igap (Z i)) (Fgap (Z i))
+  Ires_in_Igap : ∀ i : Species,
+    (C.Igap (Z i)).lo ≤ (C.Ires i).lo ∧ (C.Ires i).hi ≤ (C.Igap (Z i)).hi
+
+/-- Positivity of `M0` from the certificate. -/
+lemma M0_pos_of_cert {C : AnchorCert} (hC : Valid C) : 0 < C.M0.lo := hC.M0_pos
+
+/-- Certificate replacement for anchorIdentity (inequality form). -/
+lemma anchorIdentity_cert {C : AnchorCert} (hC : Valid C)
+  (res : Species → ℝ) (hres : ∀ i, memI (C.Ires i) (res i)) :
+  ∀ i : Species, |res i - Fgap (Z i)| ≤ 2 * C.eps (Z i) := by
+  intro i
+  have hinc := (hC.Ires_in_Igap i)
+  have hresI : memI (C.Igap (Z i)) (res i) := by
+    have hri := hres i
+    exact And.intro (le_trans hinc.left hri.left) (le_trans hri.right hinc.right)
+  have : |res i - Fgap (Z i)| ≤ width (C.Igap (Z i)) :=
+    abs_sub_le_width_of_memI hresI (hC.Fgap_in i)
+  have : |res i - Fgap (Z i)| ≤ (C.center (Z i) + C.eps (Z i)) - (C.center (Z i) - C.eps (Z i)) := by
+    simpa [Igap, width, sub_eq_add_neg, add_comm, add_left_comm, add_assoc] using this
+  simpa [two_mul, sub_eq, sub_eq_add_neg, add_comm, add_left_comm, add_assoc] using this
+
+/-- Equal‑Z degeneracy (inequality form) from a certificate. -/
+lemma equalZ_residue_of_cert {C : AnchorCert} (hC : Valid C)
+  (res : Species → ℝ) (hres : ∀ i, memI (C.Ires i) (res i))
+  {i j : Species} (hZ : Z i = Z j) :
+  |res i - res j| ≤ 2 * C.eps (Z i) := by
+  have hi : memI (C.Igap (Z i)) (res i) := by
+    have hinc := (hC.Ires_in_Igap i); have hri := hres i
+    exact And.intro (le_trans hinc.left hri.left) (le_trans hri.right hinc.right)
+  have hj : memI (C.Igap (Z j)) (res j) := by
+    have hinc := (hC.Ires_in_Igap j); have hrj := hres j
+    exact And.intro (le_trans hinc.left hrj.left) (le_trans hrj.right hinc.right)
+  have : |res i - res j| ≤ width (C.Igap (Z i)) := by
+    have hj' : memI (C.Igap (Z i)) (res j) := by simpa [hZ] using hj
+    exact abs_sub_le_width_of_memI hi hj'
+  simpa [Igap, width, sub_eq_add_neg, add_comm, add_left_comm, add_assoc, two_mul] using this
+
+end
+end Certification
+end Recognition
+end IndisputableMonolith
+
+namespace IndisputableMonolith
+namespace Recognition
 noncomputable section
 open Classical
 
