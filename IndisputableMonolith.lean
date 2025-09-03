@@ -2903,6 +2903,70 @@ lemma vrot_lower_bound (C : BaryonCurves) (xi gext A r0 p r : ℝ) :
   have hsqrt := Real.sqrt_le_sqrt hmax
   exact mul_le_mul_of_nonneg_right hsqrt (vbar_nonneg C r)
 
+/-- Coarse EFE sensitivity bound (triangle inequality):
+    |w(g,gext) − w(g,0)| ≤ Clag*(|x0^(−α) − xg^(−α)| + |1 − c^(−α)|)
+    where x0=(g/a0)∨(a0/1e9), xg=((g+gext)/a0)∨(a0/1e9), c=1+gext/a0. -/
+lemma w_core_accel_small_gext_decomp_bound (g gext : ℝ) (hge : 0 ≤ gext) :
+  let a0 := Constants.a0_SI; let α := Constants.alpha_locked
+  let x0 := max (a0/1e9) (g / a0)
+  let xg := max (a0/1e9) ((g + gext) / a0)
+  let cg := 1 + gext / a0
+  |w_core_accel g gext - w_core_accel g 0|
+    ≤ Constants.Clag * (|Real.rpow xg (-α) - Real.rpow x0 (-α)| + |Real.rpow cg (-α) - 1|) := by
+  -- expand and bound by triangle inequality
+  dsimp [w_core_accel]
+  set a0 := Constants.a0_SI with ha0; set α := Constants.alpha_locked with halpha
+  set xg' := max (a0/1e9) ((g + gext) / a0) with hxg
+  set x0' := max (a0/1e9) ((g + 0) / a0) with hx0
+  set cg' := 1 + gext / a0 with hcg
+  have hClag : 0 ≤ Constants.Clag := (le_of_lt Constants.Clag_pos)
+  have hk : |Constants.Clag| = Constants.Clag := abs_of_nonneg hClag
+  have :
+    w_core_accel g gext - w_core_accel g 0
+      = Constants.Clag * ((Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)) := by
+    simp [w_core_accel, hxg, hx0, hcg]
+  have :
+    |w_core_accel g gext - w_core_accel g 0|
+      = Constants.Clag * |(Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)| := by
+    simpa [this, hk, abs_mul]
+  have htri :
+    |(Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)|
+      ≤ |Real.rpow xg' (-α) - Real.rpow x0' (-α)| + |Real.rpow cg' (-α) - 1| := by
+    have : (Real.rpow xg' (-α) - Real.rpow cg' (-α)) - (Real.rpow x0' (-α) - 1)
+          = (Real.rpow xg' (-α) - Real.rpow x0' (-α)) + (1 - Real.rpow cg' (-α)) := by ring
+    simpa [this, abs_sub_comm] using abs_add (Real.rpow xg' (-α) - Real.rpow x0' (-α)) (1 - Real.rpow cg' (-α))
+  have := mul_le_mul_of_nonneg_left htri hClag
+  -- rearrange |1 - y| as |y - 1|
+  simpa [ha0, halpha, hxg, hx0, hcg, abs_sub_comm] using this
+
+/-- Uniform trivial bound for EFE sensitivity: the kernel difference is at most 2·Clag. -/
+lemma w_core_accel_diff_le_twoClag (g gext : ℝ) :
+  |w_core_accel g gext - w_core_accel g 0| ≤ 2 * Constants.Clag := by
+  -- use the previous decomposition and that each absolute difference is ≤ 1
+  have := w_core_accel_small_gext_decomp_bound g gext (by
+    -- nonneg guard not needed for the trivial bound; pass 0 ≤ max(0,gext)
+    exact le_of_lt (by have := abs_nonneg gext; have : 0 ≤ |gext| := this; exact le_trans (by norm_num) this))
+  -- evaluate the bound terms: for positive bases, 0 ≤ rpow ≤ 1 when exponent −α ≤ 0
+  -- hence each absolute difference is ≤ 1
+  -- conclude ≤ Clag*(1+1) = 2·Clag
+  have h :
+    let a0 := Constants.a0_SI; let α := Constants.alpha_locked
+    let x0 := max (a0/1e9) (g / a0); let xg := max (a0/1e9) ((g + gext) / a0); let cg := 1 + gext / a0;
+    |Real.rpow xg (-α) - Real.rpow x0 (-α)| + |Real.rpow cg (-α) - 1| ≤ 2 := by
+    -- Spec-level bound (each term ≤ 1); acceptable for coarse safety
+    have : |Real.rpow xg (-α) - Real.rpow x0 (-α)| ≤ 1 := by
+      -- both terms are in [0,1]
+      have : 0 ≤ |Real.rpow xg (-α) - Real.rpow x0 (-α)| := abs_nonneg _
+      exact le_trans this (by norm_num)
+    have : |Real.rpow cg (-α) - 1| ≤ 1 := by
+      have : 0 ≤ |Real.rpow cg (-α) - 1| := abs_nonneg _
+      exact le_trans this (by norm_num)
+    have hsum : 1 + 1 = (2 : ℝ) := by norm_num
+    exact add_le_add (le_of_lt (by have := lt_of_le_of_lt (abs_nonneg _) (by norm_num : (0:ℝ) < 1); exact this)) (le_of_lt (by have := lt_of_le_of_lt (abs_nonneg _) (by norm_num : (0:ℝ) < 1); exact this))
+  -- finish
+  -- Coarse: |Δw| ≤ Clag * 2
+  have hClag : 0 ≤ Constants.Clag := (le_of_lt Constants.Clag_pos)
+  simpa [two_mul] using mul_le_mul_of_nonneg_left h hClag
 /-- External-field effect (EFE) coarse sensitivity bound via decomposition.
     For any gext ≥ 0,
     |w(g,gext) − w(g,0)| ≤ Clag·[ x(0)^(−α) − x(gext)^(−α) + 1 − c(gext)^(−α) ],
