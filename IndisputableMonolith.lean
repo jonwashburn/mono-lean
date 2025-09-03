@@ -3801,3 +3801,87 @@ def product {γ₁ γ₂ : Type} (PW₁ : PathWeight γ₁) (PW₂ : PathWeight 
 end Quantum
 
 end IndisputableMonolith
+
+namespace IndisputableMonolith
+namespace RealityBridge
+
+noncomputable section
+open Classical
+
+/-- Exponent vector for SI base units: kg, m, s, A, K, mol, cd. -/
+structure Dim where
+  kg  : Int
+  m   : Int
+  s   : Int
+  A   : Int
+  K   : Int
+  mol : Int
+  cd  : Int
+deriving DecidableEq, Repr
+
+namespace Dim
+  @[simp] def zero : Dim := ⟨0,0,0,0,0,0,0⟩
+  @[simp] def add (x y : Dim) : Dim :=
+    ⟨x.kg+y.kg, x.m+y.m, x.s+y.s, x.A+y.A, x.K+y.K, x.mol+y.mol, x.cd+y.cd⟩
+  @[simp] def neg (x : Dim) : Dim :=
+    ⟨-x.kg, -x.m, -x.s, -x.A, -x.K, -x.mol, -x.cd⟩
+  instance : HAdd Dim Dim Dim where hAdd := add
+  instance : HSub Dim Dim Dim where hSub x y := add x (neg y)
+end Dim
+
+/-- A physical observable = real value tagged with a dimension. -/
+structure Observable where
+  dim : Dim
+  val : Real
+deriving Repr
+
+/-- Base‑unit anchors (positive scale factors for each SI base). -/
+structure Anchor where
+  kg  : Real
+  m   : Real
+  s   : Real
+  A   : Real
+  K   : Real
+  mol : Real
+  cd  : Real
+  pos_kg  : 0 < kg
+  pos_m   : 0 < m
+  pos_s   : 0 < s
+  pos_A   : 0 < A
+  pos_K   : 0 < K
+  pos_mol : 0 < mol
+  pos_cd  : 0 < cd
+
+private def rpown (a : Real) (h : 0 < a) (n : Int) : Real :=
+  if n ≥ 0 then a ^ (Int.toNat n) else (a ^ (Int.toNat (-n)))⁻¹
+
+def scale (a : Anchor) (d : Dim) : Real :=
+  rpown a.kg  a.pos_kg  d.kg  *
+  rpown a.m   a.pos_m   d.m   *
+  rpown a.s   a.pos_s   d.s   *
+  rpown a.A   a.pos_A   d.A   *
+  rpown a.K   a.pos_K   d.K   *
+  rpown a.mol a.pos_mol d.mol *
+  rpown a.cd  a.pos_cd  d.cd
+
+def reanchor (a : Anchor) (o : Observable) : Observable :=
+  { dim := o.dim, val := scale a o.dim * o.val }
+
+def Dimensionless (o : Observable) : Prop := o.dim = Dim.zero
+
+theorem anchorInvariant_of_dimless (a : Anchor) (o : Observable)
+  (h : Dimensionless o) : (reanchor a o).val = o.val := by
+  unfold reanchor Dimensionless at *
+  simp [h, scale, rpown]
+
+def UnitsQuot (o : Observable) (h : Dimensionless o) : Real := o.val
+
+theorem unitsQuot_anchor_invariant (a : Anchor) (o : Observable)
+  (h : Dimensionless o) :
+  UnitsQuot (reanchor a o) (by simpa [reanchor, Dimensionless] using h) = UnitsQuot o h := by
+  unfold UnitsQuot
+  simpa [anchorInvariant_of_dimless a o h]
+
+end
+end RealityBridge
+end IndisputableMonolith
