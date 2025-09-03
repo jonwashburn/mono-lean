@@ -1740,6 +1740,75 @@ end Recognition
 end IndisputableMonolith
 
 namespace IndisputableMonolith
+namespace Recognition
+noncomputable section
+open Classical
+
+/-- φ^1 under the wrapper. -/
+lemma PhiPow_one : PhiPow 1 = (Constants.phi) := by
+  unfold PhiPow
+  simpa using Real.exp_log (Constants.phi_pos)
+
+/-- For natural exponents, PhiPow matches φ^n. -/
+lemma PhiPow_nat (n : Nat) : PhiPow (n) = (Constants.phi) ^ n := by
+  induction' n with n ih
+  · simp [PhiPow]
+  · have := PhiPow_add (x := (n : ℝ)) (y := (1 : ℝ))
+    simpa [ih, PhiPow_one, pow_succ, mul_comm, mul_left_comm, mul_assoc]
+
+/-- Scale‑free: under equal‑Z, the mass ratio is independent of the overall scale. -/
+lemma mass_ratio_scale_free {M0 M1 : ℝ} {i j : Species} (hZ : Z i = Z j) :
+  mass M0 i / mass M0 j = mass M1 i / mass M1 j := by
+  simp [mass_ratio_phiPow (M0 := M0) hZ, mass_ratio_phiPow (M0 := M1) hZ]
+
+/-- Concrete lepton ratios at the anchor (equal‑Z family): μ/e and τ/μ. -/
+lemma mass_ratio_mu_e (M0 : ℝ) :
+  mass M0 .mu / mass M0 .e = (Constants.phi) ^ (11 : Nat) := by
+  have hZ : Z .mu = Z .e := (equalZ_lepton_family.left)
+  have : mass M0 .mu / mass M0 .e = PhiPow ((r .mu : ℝ) - (r .e : ℝ)) := mass_ratio_phiPow (M0 := M0) hZ
+  simpa [r, this, PhiPow_nat]
+
+lemma mass_ratio_tau_mu (M0 : ℝ) :
+  mass M0 .tau / mass M0 .mu = (Constants.phi) ^ (6 : Nat) := by
+  have hZ : Z .tau = Z .mu := (equalZ_lepton_family.right)
+  have : mass M0 .tau / mass M0 .mu = PhiPow ((r .tau : ℝ) - (r .mu : ℝ)) := mass_ratio_phiPow (M0 := M0) hZ
+  simpa [r, this, PhiPow_nat]
+
+/-- Concrete up‑quark family ratios at the anchor (equal‑Z family): c/u and t/c. -/
+lemma mass_ratio_c_u (M0 : ℝ) :
+  mass M0 .c / mass M0 .u = (Constants.phi) ^ (11 : Nat) := by
+  have hZ : Z .c = Z .u := (equalZ_up_family.left)
+  have : mass M0 .c / mass M0 .u = PhiPow ((r .c : ℝ) - (r .u : ℝ)) := mass_ratio_phiPow (M0 := M0) hZ
+  simpa [r, this, PhiPow_nat]
+
+lemma mass_ratio_t_c (M0 : ℝ) :
+  mass M0 .t / mass M0 .c = (Constants.phi) ^ (6 : Nat) := by
+  have hZ : Z .t = Z .c := (equalZ_up_family.right)
+  have : mass M0 .t / mass M0 .c = PhiPow ((r .t : ℝ) - (r .c : ℝ)) := mass_ratio_phiPow (M0 := M0) hZ
+  simpa [r, this, PhiPow_nat]
+
+/-- Concrete down‑quark family ratios at the anchor (equal‑Z family): s/d and b/s. -/
+lemma mass_ratio_s_d (M0 : ℝ) :
+  mass M0 .s / mass M0 .d = (Constants.phi) ^ (11 : Nat) := by
+  have hZ : Z .s = Z .d := (equalZ_down_family.left)
+  have : mass M0 .s / mass M0 .d = PhiPow ((r .s : ℝ) - (r .d : ℝ)) := mass_ratio_phiPow (M0 := M0) hZ
+  simpa [r, this, PhiPow_nat]
+
+lemma mass_ratio_b_s (M0 : ℝ) :
+  mass M0 .b / mass M0 .s = (Constants.phi) ^ (6 : Nat) := by
+  have hZ : Z .b = Z .s := (equalZ_down_family.right)
+  have : mass M0 .b / mass M0 .s = PhiPow ((r .b : ℝ) - (r .s : ℝ)) := mass_ratio_phiPow (M0 := M0) hZ
+  simpa [r, this, PhiPow_nat]
+
+end
+end Recognition
+end IndisputableMonolith
+
+end
+end Recognition
+end IndisputableMonolith
+
+namespace IndisputableMonolith
 
 /-! ## Constants: RS symbolic units and classical mapping hooks (no numerics) -/
 
@@ -2788,6 +2857,7 @@ def toy_vrot (r : ℝ) : ℝ :=
 -- #eval toy_vrot 1.0
 -- #eval toy_vrot 5.0
 -- #eval toy_vrot 10.0
+-- #eval (let (C, xi, gext, A, r0) := toyConfig; vrot_mode C xi gext A r0 1.6 5.0 1.0)
 -/
 
 /-- Nonnegativity of vrot for all inputs (total variant). -/
@@ -2810,6 +2880,18 @@ lemma vrot_mode_time_at_ref (C : BaryonCurves) (xi A r0 p r : ℝ) :
   vrot_mode C xi 0 A r0 p KernelMode.time r 1
     = Real.sqrt (max εv (xi * n_of_r A r0 p r * zeta_of_r r)) * vbar C r := by
   simp [vrot_mode, w_tot_mode, w_core_time_at_ref]
+
+/-- At the reference point, the accel and time kernels coincide (both equal 1). -/
+lemma w_core_modes_ref_eq :
+  w_core KernelMode.accel Constants.a0_SI 0 1
+    = w_core KernelMode.time Constants.a0_SI 0 1 := by
+  simp [w_core, w_core_accel_at_ref, w_core_time_at_ref]
+
+/-- Consequently, the rotation laws with accel vs time kernel modes coincide at the reference. -/
+lemma vrot_modes_ref_eq (C : BaryonCurves) (xi A r0 p r : ℝ) :
+  vrot_mode C xi 0 A r0 p KernelMode.accel r 1
+    = vrot_mode C xi 0 A r0 p KernelMode.time r 1 := by
+  simp [vrot_mode, w_tot_mode, w_core_modes_ref_eq]
 
 /-- Lower bound without eps elimination: for any r,
     vrot ≥ sqrt(w_tot) * vbar (since sqrt(max εv W) ≥ sqrt W). -/
