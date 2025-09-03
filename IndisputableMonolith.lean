@@ -2942,6 +2942,24 @@ lemma vrot_lower_bound (C : BaryonCurves) (xi gext A r0 p r : ℝ) :
   have hsqrt := Real.sqrt_le_sqrt hmax
   exact mul_le_mul_of_nonneg_right hsqrt (vbar_nonneg C r)
 
+/-- Drop-eps variant for `gbar`: if `r ≥ εr` then the guard is inactive. -/
+lemma gbar_eq_div_r_of_r_ge_eps (C : BaryonCurves) {r : ℝ} (hr : εr ≤ r) :
+  gbar C r = (vbar C r) ^ 2 / r := by
+  dsimp [gbar]
+  have : max εr r = r := by exact max_eq_right hr
+  simpa [this]
+
+/-- Drop-eps variant for `vrot`: if `w_tot ≥ εv` then the guard is inactive. -/
+lemma vrot_eq_no_guard_of_wtot_ge_eps
+  (C : BaryonCurves) (xi gext A r0 p r : ℝ)
+  (hW : εv ≤ w_tot C xi gext A r0 p r) :
+  vrot C xi gext A r0 p r =
+    Real.sqrt (w_tot C xi gext A r0 p r) * vbar C r := by
+  dsimp [vrot]
+  have : max εv (w_tot C xi gext A r0 p r) = w_tot C xi gext A r0 p r := by
+    exact max_eq_right hW
+  simpa [this]
+
 /-- Coarse EFE sensitivity bound (triangle inequality):
     |w(g,gext) − w(g,0)| ≤ Clag*(|x0^(−α) − xg^(−α)| + |1 − c^(−α)|)
     where x0=(g/a0)∨(a0/1e9), xg=((g+gext)/a0)∨(a0/1e9), c=1+gext/a0. -/
