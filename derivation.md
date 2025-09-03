@@ -47,6 +47,10 @@ Lean mapping (current single‑file implementation)
   - `Clag := 1 / (phi ^ 5)`
   - `a0_SI := 1.2e-10`
 
+- Kernel mode additions in `IndisputableMonolith.Gravity.ILG`
+  - `w_core_time (t)` centered at `t=1` (time-kernel), with `w_core_time_at_ref` and reference equality to accel-kernel
+  - `KernelMode` selector with `accel | time | accelInf1`, plus `w_core`, `w_tot_mode`, `vrot_mode`
+
 Mass recognition layer (discrete → φ‑exponent ratios)
 ----------------------------------------------------
 - Discrete layer: `Species`, `Sector`, `tildeQ`, `Z`, and frozen rung integers `r` live in `IndisputableMonolith.Recognition`.
