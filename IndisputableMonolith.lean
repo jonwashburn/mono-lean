@@ -2814,6 +2814,45 @@ lemma n_of_r_le_one_add {A r0 p r : ℝ} (hA : 0 ≤ A) : n_of_r A r0 p r ≤ 1 
     simpa [mul_one, add_comm, add_left_comm, add_assoc] using add_le_add_left this 1
   simpa [n_of_r]
 
+/-- Monotonicity in radius: for `A ≥ 0`, `p ≥ 0`, `n(r)` is monotone nondecreasing in `r`. -/
+lemma n_of_r_mono (A r0 p : ℝ) (hA : 0 ≤ A) (hp : 0 ≤ p) : Monotone (n_of_r A r0 p) := by
+  intro r1 r2 hr
+  dsimp [n_of_r]
+  -- denominator positivity
+  set d := max εr r0 with hd
+  have hdenpos : 0 < d := by
+    have : 0 < εr := by norm_num
+    exact lt_of_le_of_lt (le_max_left _ _) this
+  -- scaled radii are monotone
+  have hnum_le : max 0 r1 ≤ max 0 r2 := by
+    exact max_le_max (le_rfl) hr
+  have hx_le : (max 0 r1) / d ≤ (max 0 r2) / d := by
+    exact div_le_div_of_nonneg_right hnum_le (le_of_lt hdenpos)
+  have hx1_nonneg : 0 ≤ (max 0 r1) / d := by
+    exact div_nonneg (le_trans (le_max_left _ _) (by norm_num)) (le_of_lt hdenpos)
+  have hx2_nonneg : 0 ≤ (max 0 r2) / d := by
+    exact div_nonneg (le_trans (le_max_left _ _) (by norm_num)) (le_of_lt hdenpos)
+  -- powers are monotone for nonnegative base
+  have hpow : Real.rpow ((max 0 r1) / d) p ≤ Real.rpow ((max 0 r2) / d) p :=
+    Real.rpow_le_rpow hx1_nonneg hx_le hp
+  -- exponentials reverse inequality because of the minus sign
+  have hneg : - Real.rpow ((max 0 r2) / d) p ≤ - Real.rpow ((max 0 r1) / d) p := by
+    simpa using (neg_le_neg hpow)
+  have hexp : Real.exp (- Real.rpow ((max 0 r2) / d) p)
+                ≤ Real.exp (- Real.rpow ((max 0 r1) / d) p) :=
+    Real.exp_le_exp.mpr hneg
+  -- shift to 1 − exp(·)
+  have hOneSub : 1 - Real.exp (- Real.rpow ((max 0 r1) / d) p)
+                  ≤ 1 - Real.exp (- Real.rpow ((max 0 r2) / d) p) := by
+    simpa [sub_eq_add_neg, add_comm, add_left_comm, add_assoc]
+      using sub_le_sub_left hexp 1
+  -- scale by A ≥ 0 and add 1
+  have hscaled : A * (1 - Real.exp (- Real.rpow ((max 0 r1) / d) p))
+                  ≤ A * (1 - Real.exp (- Real.rpow ((max 0 r2) / d) p)) :=
+    mul_le_mul_of_nonneg_left hOneSub hA
+  simpa [d, hd]
+    using add_le_add_left hscaled 1
+
 /-- Domain-friendly facts: nonnegativity of vbar and gbar under r>0. -/
 lemma vbar_nonneg (C : BaryonCurves) (r : ℝ) : 0 ≤ vbar C r := by
   dsimp [vbar]
