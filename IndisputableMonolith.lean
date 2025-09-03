@@ -3885,3 +3885,65 @@ theorem unitsQuot_anchor_invariant (a : Anchor) (o : Observable)
 end
 end RealityBridge
 end IndisputableMonolith
+
+namespace IndisputableMonolith
+namespace Reciprocity
+
+noncomputable section
+open Classical
+
+/-- Abstract species index for local recognition loops. -/
+variable {Species : Type}
+
+/-- Pairwise local flux (abstracted; no spacetime integrals needed for ΔS≥0). -/
+def Flux := Species → Species → ℝ
+
+/-- Antisymmetric skew‑debt density. -/
+def sigma (ρ : Flux) : Species → Species → ℝ := fun i j => (ρ i j - ρ j i) / 2
+
+/-- Soft reciprocity penalty density for a fixed pair. -/
+def sigma2 (ρ : Flux) (i j : Species) : ℝ := (sigma ρ i j) ^ 2
+
+/-- Action surcharge from inseparability (discrete surrogate for ∑ σ²). -/
+def dS (κ : ℝ) (pairs : List (Species × Species)) (ρ : Flux) : ℝ :=
+  κ * (pairs.map (fun ⟨i,j⟩ => sigma2 ρ i j)).sum
+
+/-- ΔS ≥ 0 for κ ≥ 0 (soft case). -/
+theorem dS_nonneg {κ : ℝ} (hκ : 0 ≤ κ)
+  (pairs : List (Species × Species)) (ρ : Flux) : 0 ≤ dS κ pairs ρ := by
+  unfold dS
+  have : 0 ≤ (pairs.map (fun ⟨i,j⟩ => (sigma ρ i j) ^ 2)).sum := by
+    -- sum of squares is non‑negative
+    induction pairs with
+    | nil => simp
+    | cons p ps ih =>
+        simp [pow_two, add_comm, add_left_comm, add_assoc, ih, mul_self_nonneg]
+  exact mul_nonneg hκ this
+
+/-- Hard reciprocity (inseparability) constraint. -/
+def HardOK (ρ : Flux) : Prop := ∀ i j, sigma ρ i j = 0
+
+/-- If HardOK holds, ΔS = 0 (tight law form). -/
+theorem dS_eq_zero_of_hard (pairs : List (Species × Species))
+  (ρ : Flux) (h : HardOK ρ) (κ : ℝ) : dS κ pairs ρ = 0 := by
+  unfold dS sigma2 sigma HardOK at *
+  classical
+  have hterm : ∀ p : (Species × Species), (let i := p.fst; let j := p.snd;
+      ((ρ i j - ρ j i) / 2) ^ 2) = 0 := by
+    intro p; rcases p with ⟨i,j⟩
+    have : (ρ i j - ρ j i) / 2 = 0 := by simpa using h i j
+    simpa [this]
+  simpa [List.map_eq_map, hterm]
+
+/-- Hook: symbolic “running‑G” bump ΔG/G₀ as a function form (soft case). -/
+def deltaG_over_G0 (λrec d : ℝ) : ℝ := (d / λrec) ^ 2
+
+/-- Hook: 8‑tick coherence multiplier under hard σ (predicted doubling). -/
+def coherenceMultiplierHard : ℝ := 2.0
+
+/-- Hook: target wavelength for the luminon line (symbolic placeholder). -/
+def luminon_nm : ℝ := 492.0
+
+end
+end Reciprocity
+end IndisputableMonolith
