@@ -3947,3 +3947,295 @@ def luminon_nm : ℝ := 492.0
 end
 end Reciprocity
 end IndisputableMonolith
+
+namespace IndisputableMonolith
+namespace PCE
+
+noncomputable section
+open Classical
+
+/-- Minimal lab transcript: measured value with (nonnegative) standard uncertainty. -/
+structure Transcript where
+  value : ℝ
+  u     : ℝ
+  u_nonneg : 0 ≤ u
+
+/-- Experiment specification DSL: requirement (semantics), decision rule, and soundness. -/
+structure ExpSpec where
+  name       : String
+  requirement : Transcript → Prop
+  decision    : Transcript → Prop
+  sound       : ∀ t, decision t → requirement t
+
+/-- Helper: bound-check requirement for a lower-threshold test (with uncertainty). -/
+def req_ge_threshold (θ : ℝ) (t : Transcript) : Prop := t.value + t.u ≥ θ
+
+/-- Helper: two-sided window requirement around a target wavelength. -/
+def req_within (target k : ℝ) (t : Transcript) : Prop := |t.value - target| ≤ k * t.u
+
+/-- Decision rule builders (as Prop for proof-friendly usage). -/
+def rule_ge (θ : ℝ) (t : Transcript) : Prop := t.value + t.u ≥ θ
+def rule_within (target k : ℝ) (t : Transcript) : Prop := |t.value - target| ≤ k * t.u
+
+/-- Soundness is trivial for these canonical forms (decision = requirement). -/
+lemma sound_ge (θ : ℝ) : ∀ t, rule_ge θ t → req_ge_threshold θ t := by
+  intro t h; exact h
+
+lemma sound_within (target k : ℝ) : ∀ t, rule_within target k t → req_within target k t := by
+  intro t h; exact h
+
+/-- Canonical spec 1: Running-G bump ΔG/G₀ ≥ θ, using a lab-specified (λrec,d). -/
+def spec_runningG (θ λrec d : ℝ) : ExpSpec :=
+{ name := s!"runningG_ge_{θ}"
+, requirement := fun t => req_ge_threshold θ t
+, decision := fun t => rule_ge θ t
+, sound := sound_ge θ }
+
+/-- Canonical spec 2: 8-tick coherence doubling (hard σ): ratio ≥ 2 within uncertainty. -/
+def spec_coherenceHard (k : ℝ := 1) : ExpSpec :=
+{ name := "coherence_hard_doubling"
+, requirement := fun t => req_ge_threshold (Reciprocity.coherenceMultiplierHard - k * t.u) t
+, decision := fun t => rule_ge (Reciprocity.coherenceMultiplierHard - k * t.u) t
+, sound := by intro t h; exact h }
+
+/-- Canonical spec 3: luminon line at 492 nm within k·u (two-sided). -/
+def spec_luminon (k : ℝ := 2) : ExpSpec :=
+{ name := "luminon_492nm"
+, requirement := fun t => req_within (Reciprocity.luminon_nm) k t
+, decision := fun t => rule_within (Reciprocity.luminon_nm) k t
+, sound := sound_within (Reciprocity.luminon_nm) k }
+
+end
+end PCE
+end IndisputableMonolith
+
+namespace IndisputableMonolith
+namespace LNAL
+
+noncomputable section
+open Classical
+
+open Constants
+
+/-- Six‑channel recognition register ⟨ν_φ, ℓ, σ, τ, k_⊥, φ_e⟩ ∈ ℤ⁶. -/
+structure Reg where
+  nuPhi : Int
+  ell   : Int
+  sigma : Int
+  tau   : Int
+  kperp : Int
+  phiE  : Int
+deriving DecidableEq, Repr
+
+/-- Register identifiers (abstract slots). -/
+abbrev RegId := Nat
+
+/-- Closed interval cost type: v ∈ [-4,4]. -/
+structure Cost where
+  val : Int
+  bound : (-4 : Int) ≤ val ∧ val ≤ 4
+deriving DecidableEq, Repr
+
+@[simp] def Cost.zero : Cost := ⟨0, by decide⟩
+
+/-- Safe cost update: returns `none` if the ±4 ceiling would be violated. -/
+def Cost.add (c : Cost) (δ : Int) : Option Cost :=
+  let v := c.val + δ
+  if h : (-4 : Int) ≤ v ∧ v ≤ 4 then some ⟨v, h⟩ else none
+
+/-- Maximum of three costs (by `val`). -/
+def Cost.max3 (a b c : Cost) : Cost :=
+  if h₁ : a.val ≥ b.val then
+    if h₂ : a.val ≥ c.val then a else c
+  else
+    if h₃ : b.val ≥ c.val then b else c
+
+/-- 1024‑tick breath counter. -/
+abbrev Tick := Fin 1024
+
+/-- Fresh token identifiers. -/
+abbrev Token := Nat
+
+/-- Seed identifiers. -/
+abbrev SID := Nat
+
+/-- Opcodes (runtime).  Macros are expanded at compile time. -/
+inductive Instr where
+  | LOCK    (r₁ r₂ : RegId)
+  | BALANCE (tok : Token)
+  | FOLD    (n : Nat) (h : 1 ≤ n ∧ n ≤ 4) (r : RegId)
+  | UNFOLD  (n : Nat) (h : 1 ≤ n ∧ n ≤ 4) (r : RegId)
+  | BRAID   (r₁ r₂ r₃ rOut : RegId)
+  | SEED    (sid : SID) (r : RegId)
+  | SPAWN   (sid : SID) (n : Nat)
+  | MERGE   (r₁ r₂ rOut : RegId)
+  | LISTEN  (mask : UInt16)
+  | GIVE    (r : RegId)
+  | REGIVE  (r : RegId)
+  | FLIP
+  | VECTOR_EQ (regs : List RegId)
+  | CYCLE
+  | GC_SEED
+deriving Repr, DecidableEq
+
+/-- Macro expander (only HARDEN in this build). -/
+inductive Macro where
+  | HARDEN (r₁ r₂ r₃ r₄ rOut : RegId)
+
+/-- Expand a macro into primitive instructions. -/
+def Macro.expand : Macro → List Instr
+  | .HARDEN r₁ r₂ r₃ r₄ rOut =>
+      [ Instr.FOLD 1 ⟨by decide, by decide⟩ r₁
+      , Instr.FOLD 1 ⟨by decide, by decide⟩ r₂
+      , Instr.FOLD 1 ⟨by decide, by decide⟩ r₃
+      , Instr.FOLD 1 ⟨by decide, by decide⟩ r₄
+      , Instr.BRAID r₁ r₂ r₃ rOut ]
+
+/-- Program state with invariants enforced by types. -/
+structure State where
+  regs   : RegId → Reg := fun _ => ⟨0,0,1,0,0,0⟩
+  cost   : RegId → Cost := fun _ => Cost.zero
+  openToken? : Option (Token × RegId × RegId) := none
+  nextTok : Token := 0
+  tick   : Tick := ⟨0, by decide⟩
+  cycle  : Nat := 0
+  flipParity : Bool := false
+  seeds : List (SID × Nat) := []
+deriving Repr
+
+@[simp] def State.costOf (s : State) (r : RegId) : Cost := s.cost r
+
+@[simp] def State.setCost (s : State) (r : RegId) (c : Cost) : State :=
+  { s with cost := Function.update s.cost r c }
+
+/-- Advance a normal tick (no fence). -/
+def State.nextTick (s : State) : State :=
+  let t' := s.tick.val.succ
+  if h : t' < 1024 then { s with tick := ⟨t', by simpa using h⟩ } else s
+
+/-- Bump all seed ages by +1 cycle. -/
+def State.bumpSeedAges (s : State) : State :=
+  { s with seeds := s.seeds.map (fun (sid, a) => (sid, a + 1)) }
+
+/-- GC seeds with age ≥ 3. -/
+def State.gcSeeds (s : State) : State :=
+  { s with seeds := s.seeds.filter (fun (_, a) => a < 3) }
+
+/-- Compile‑time ledger delta per instruction (for eight‑window neutrality). -/
+def instrCost : Instr → Int
+  | .LOCK _ _       => 2
+  | .BALANCE _      => -2
+  | .FOLD n _ _     => n
+  | .UNFOLD n _ _   => -(n : Int)
+  | .GIVE _         => 1
+  | .REGIVE _       => -1
+  | _               => 0
+
+/-- Check that every sliding window of 8 instructions has net cost 0. -/
+def windows8Neutral : List Instr → Bool
+  | [] => true
+  | l  =>
+    let cs := l.map instrCost
+    let rec go (xs : List Int) (buf : List Int) (ok : Bool) : Bool :=
+      match xs with
+      | []      => ok
+      | x::xs'  =>
+        let buf' := (buf ++ [x]).takeRight 8
+        let ok'  := if buf'.length = 8 then ok ∧ (buf'.sum = 0) else ok
+        go xs' buf' ok'
+    go cs [] true
+
+/-- One instruction step; returns `none` on a static/runtime violation. -/
+def step (s : State) : Instr → Option State
+  | .LOCK r₁ r₂ =>
+      match s.openToken? with
+      | some _ => none
+      | none =>
+        match (s.costOf r₁).add 1, (s.costOf r₂).add 1 with
+        | some c₁, some c₂ =>
+            some <| (s.setCost r₁ c₁).setCost r₂ c₂
+              |> fun s1 => { s1 with openToken? := some (s.nextTok, r₁, r₂), nextTok := s.nextTok + 1 }
+              |> State.nextTick
+        | _, _ => none
+  | .BALANCE _ =>
+      match s.openToken? with
+      | none => none
+      | some (_, r₁, r₂) =>
+        match (s.costOf r₁).add (-1), (s.costOf r₂).add (-1) with
+        | some c₁, some c₂ =>
+            some <| (s.setCost r₁ c₁).setCost r₂ c₂
+              |> fun s1 => { s1 with openToken? := none }
+              |> State.nextTick
+        | _, _ => none
+  | .FOLD n h r =>
+      match (s.costOf r).add (n) with
+      | some c' => some <| (s.setCost r c') |> State.nextTick
+      | none    => none
+  | .UNFOLD n h r =>
+      match (s.costOf r).add (-(n : Int)) with
+      | some c' => some <| (s.setCost r c') |> State.nextTick
+      | none    => none
+  | .GIVE r =>
+      match (s.costOf r).add 1 with
+      | some c' => some <| (s.setCost r c') |> State.nextTick
+      | none    => none
+  | .REGIVE r =>
+      match (s.costOf r).add (-1) with
+      | some c' => some <| (s.setCost r c') |> State.nextTick
+      | none    => none
+  | .BRAID r₁ r₂ r₃ rOut =>
+      let c := Cost.max3 (s.costOf r₁) (s.costOf r₂) (s.costOf r₃)
+      some <| (s.setCost rOut c) |> State.nextTick
+  | .MERGE r₁ r₂ rOut =>
+      let c := Cost.max3 (s.costOf r₁) (s.costOf r₂) Cost.zero
+      some <| (s.setCost rOut c) |> State.nextTick
+  | .SEED sid r =>
+      some <| { s with seeds := (sid, 0) :: s.seeds } |> State.nextTick
+  | .SPAWN _ _ => some <| s |> State.nextTick
+  | .LISTEN _  => some <| s |> State.nextTick
+  | .FLIP      => some <| { s with flipParity := !s.flipParity } |> State.nextTick
+  | .VECTOR_EQ _ => some <| s |> State.nextTick
+  | .GC_SEED   => some <| s.gcSeeds |> State.nextTick
+  | .CYCLE     =>
+      if h : s.tick.val = 1023 then
+        let s₁ := { s with tick := ⟨0, by decide⟩, cycle := s.cycle + 1, flipParity := !s.flipParity }
+        let s₂ := s₁.bumpSeedAges
+        let s₃ := if s₂.cycle % 3 = 0 then s₂.gcSeeds else s₂
+        some s₃
+      else none
+
+/-- Big–step execution. -/
+def exec : State → List Instr → Option State
+  | s, []      => some s
+  | s, i::is   => match step s i with | none => none | some s' => exec s' is
+
+open Constants RSUnits
+
+/-- Dimensionful recognition tick (seconds): τ₀ := τ_rec · (λ_rec / c). -/
+def tickSeconds (U : RSUnits) (C : ClassicalParams) : ℝ :=
+  tau_rec * (RSUnits.lambda_rec U C / RSUnits.c U)
+
+lemma tickSeconds_pos (U : RSUnits) (C : ClassicalParams) : 0 < tickSeconds U C := by
+  have h1 : 0 < tau_rec := by
+    have hlog : 0 < Real.log phi := log_phi_pos
+    have hden : 0 < (4 : ℝ) * Real.log phi := by have : 0 < (4 : ℝ) := by norm_num; exact mul_pos this hlog
+    have : 0 < Real.pi / ((4 : ℝ) * Real.log phi) := div_pos Real.pi_pos hden
+    simpa [tau_rec_eq_pi_over_4_logphi] using this
+  have h2 : 0 < RSUnits.lambda_rec U C / RSUnits.c U := by
+    have := RSUnits.lambda_rec_pos (U:=U) (C:=C)
+    have := RSUnits.c_pos (U:=U)
+    exact div_pos ‹0 < _› ‹0 < _›
+  have : 0 < tau_rec * (RSUnits.lambda_rec U C / RSUnits.c U) := mul_pos h1 h2
+  simpa [tickSeconds] using this
+
+/-- Cycle duration (seconds). -/
+def cycleSeconds (U : RSUnits) (C : ClassicalParams) : ℝ := (1024 : ℝ) * tickSeconds U C
+
+lemma cycleSeconds_pos (U : RSUnits) (C : ClassicalParams) : 0 < cycleSeconds U C := by
+  have : 0 < tickSeconds U C := tickSeconds_pos (U:=U) (C:=C)
+  have : 0 < (1024 : ℝ) * tickSeconds U C := by have : 0 < (1024 : ℝ) := by norm_num; exact mul_pos this ‹0 < _›
+  simpa [cycleSeconds] using this
+
+end
+end LNAL
+end IndisputableMonolith
