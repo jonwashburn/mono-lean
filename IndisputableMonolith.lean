@@ -1619,6 +1619,127 @@ end RSBridge
 end IndisputableMonolith
 
 namespace IndisputableMonolith
+namespace Recognition
+
+noncomputable section
+open Classical
+
+/-- Sectors for the discrete constructor layer. -/
+inductive Sector | up | down | lepton | neutrino deriving DecidableEq, Repr
+
+/-- The 12 SM fermion species (Dirac ν allowed). -/
+inductive Species
+| u | c | t
+| d | s | b
+| e | mu | tau
+| nu1 | nu2 | nu3
+deriving DecidableEq, Repr
+
+/-- Sector assignment per species. -/
+@[simp] def sector : Species → Sector
+| .u | .c | .t => Sector.up
+| .d | .s | .b => Sector.down
+| .e | .mu | .tau => Sector.lepton
+| .nu1 | .nu2 | .nu3 => Sector.neutrino
+
+/-- Integerized charge ˜Q := 6Q. -/
+@[simp] def tildeQ : Species → Int
+| .u | .c | .t => 4
+| .d | .s | .b => -2
+| .e | .mu | .tau => -6
+| .nu1 | .nu2 | .nu3 => 0
+
+/-- Word‑charge Z: quarks 4+˜Q^2+˜Q^4; leptons ˜Q^2+˜Q^4; Dirac ν → 0. -/
+@[simp] def Z : Species → Int
+| i => match sector i with
+       | Sector.up | Sector.down => 4 + (tildeQ i)^2 + (tildeQ i)^4
+       | Sector.lepton => (tildeQ i)^2 + (tildeQ i)^4
+       | Sector.neutrino => 0
+
+/-- Rung integers rᵢ (frozen from the papers’ table). -/
+@[simp] def r : Species → Int
+| .e   => 2   | .mu  => 13  | .tau => 19
+| .u   => 4   | .c   => 15  | .t   => 21
+| .d   => 4   | .s   => 15  | .b   => 21
+| .nu1 => 0   | .nu2 => 11  | .nu3 => 17
+
+/-- Optional sector integer Δ_B (kept 0 here). -/
+@[simp] def ΔB : Sector → Int
+| _ => 0
+
+/-- Closed‑form gap 𝔽(Z) = log(1 + Z/φ) / log φ. -/
+noncomputable def Fgap (z : Int) : ℝ :=
+  Real.log (1 + (z : ℝ) / (Constants.phi)) / Real.log (Constants.phi)
+
+/-- Mass‑law exponent Eᵢ = rᵢ + 𝔽(Zᵢ) − 8 (parameter‑free in exponent). -/
+noncomputable def massExp (i : Species) : ℝ := (r i : ℝ) + Fgap (Z i) - 8
+
+/-- φ‑power wrapper: Φ(x) := exp( (log φ)·x ). -/
+noncomputable def PhiPow (x : ℝ) : ℝ := Real.exp (Real.log (Constants.phi) * x)
+
+lemma PhiPow_add (x y : ℝ) : PhiPow (x + y) = PhiPow x * PhiPow y := by
+  unfold PhiPow
+  simpa [mul_add, Real.exp_add, mul_comm, mul_left_comm, mul_assoc]
+
+lemma PhiPow_sub (x y : ℝ) : PhiPow (x - y) = PhiPow x / PhiPow y := by
+  unfold PhiPow
+  have : Real.log (Constants.phi) * (x - y)
+        = Real.log (Constants.phi) * x + Real.log (Constants.phi) * (-y) := by ring
+  simp [this, sub_eq_add_neg, Real.exp_add, Real.exp_neg, div_eq_mul_inv,
+        mul_comm, mul_left_comm, mul_assoc]
+
+/-- Scale‑carrying mass: mᵢ = M₀ · Φ(Eᵢ). -/
+noncomputable def mass (M0 : ℝ) (i : Species) : ℝ := M0 * PhiPow (massExp i)
+
+/-- Equal‑Z families (up). -/
+lemma equalZ_up_family : Z .u = Z .c ∧ Z .c = Z .t := by
+  constructor <;> simp [Z, tildeQ, sector]
+
+/-- Equal‑Z families (down). -/
+lemma equalZ_down_family : Z .d = Z .s ∧ Z .s = Z .b := by
+  constructor <;> simp [Z, tildeQ, sector]
+
+/-- Equal‑Z families (charged leptons). -/
+lemma equalZ_lepton_family : Z .e = Z .mu ∧ Z .mu = Z .tau := by
+  constructor <;> simp [Z, tildeQ, sector]
+
+/-- Residue at anchor type. -/
+noncomputable abbrev Residue := Species → ℝ
+
+/-- Anchor identity (postulate): fᵢ(μ★,mᵢ) = 𝔽(Zᵢ). -/
+axiom anchorIdentity (f : Residue) : ∀ i : Species, f i = Fgap (Z i)
+
+/-- Consequence: equal‑Z degeneracy of residues at the anchor. -/
+theorem equalZ_residue (f : Residue) {i j : Species} (hZ : Z i = Z j) : f i = f j := by
+  have hi := anchorIdentity f i; have hj := anchorIdentity f j
+  simpa [hi, hj, hZ]
+
+/-- Gap cancels at equal‑Z: Eᵢ − Eⱼ = rᵢ − rⱼ. -/
+theorem massExp_diff_eq_rdiff {i j : Species} (hZ : Z i = Z j) :
+  massExp i - massExp j = (r i : ℝ) - (r j : ℝ) := by
+  unfold massExp; simp [hZ, sub_eq_add_neg, add_comm, add_left_comm, add_assoc]
+
+/-- Anchor ratio in φ‑powers (scale cancels): mᵢ/mⱼ = Φ(rᵢ − rⱼ) when Zᵢ = Zⱼ. -/
+theorem mass_ratio_phiPow (M0 : ℝ) {i j : Species} (hZ : Z i = Z j) :
+  mass M0 i / mass M0 j = PhiPow ((r i : ℝ) - (r j : ℝ)) := by
+  unfold mass
+  have : PhiPow (massExp i - massExp j) = PhiPow ((r i : ℝ) - (r j : ℝ)) := by
+    simpa [massExp_diff_eq_rdiff hZ]
+  calc
+    mass M0 i / mass M0 j
+        = (M0 * PhiPow (massExp i)) / (M0 * PhiPow (massExp j)) := rfl
+    _   = (PhiPow (massExp i)) / (PhiPow (massExp j)) := by
+          by_cases hM : M0 = 0
+          · simp [hM]
+          · field_simp [hM]
+    _   = PhiPow (massExp i - massExp j) := by simpa [PhiPow_sub]
+    _   = PhiPow ((r i : ℝ) - (r j : ℝ)) := this
+
+end
+end Recognition
+end IndisputableMonolith
+
+namespace IndisputableMonolith
 
 /-! ## Constants: RS symbolic units and classical mapping hooks (no numerics) -/
 
